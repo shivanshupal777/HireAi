@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TextareaAutosize from 'react-textarea-autosize';
 import StyledBotMessage from './StyledBotMessage'; 
-import { Send, Cpu, User } from 'lucide-react';
+import { Send, Cpu, User, LoaderCircle } from 'lucide-react';
 
 const getGreeting = () => {
     const hour = new Date().getHours();
@@ -33,21 +33,34 @@ const ExamplePrompt = ({ text, promptText, onClick }) => (
 );
 
 
-const ChatPanel = ({ messages, setMessages }) => {
+const ChatPanel = ({ messages, setMessages, chatId, setChatId, isLoading }) => {
   const [input, setInput] = useState("");
   const [isBotTyping, setIsBotTyping] = useState(false);
+  // --- ADD THIS NEW STATE FOR THE COOLDOWN ---
+  const [isRateLimited, setIsRateLimited] = useState(false);
+  
   const chatEndRef = useRef(null);
   const userName = "Alex";
   const hasStartedChat = messages.length > 0;
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isBotTyping]);
+    if (!isLoading && chatEndRef.current) {
+        chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isBotTyping, isLoading]);
 
   const sendMessage = async (promptText) => {
     const textToSend = typeof promptText === 'string' ? promptText : input;
-    if (!textToSend.trim()) return;
-    setMessages(prev => [...prev, { text: textToSend, sender: 'user' }]);
+    // Don't send if the button is on cooldown
+    if (!textToSend.trim() || isBotTyping || isRateLimited) return;
+
+    // --- START THE COOLDOWN ---
+    setIsRateLimited(true);
+    // Set a timeout to end the cooldown after 5 seconds
+    setTimeout(() => setIsRateLimited(false), 5000);
+
+    const newMessages = [...messages, { text: textToSend, sender: 'user' }];
+    setMessages(newMessages);
     setInput("");
     setIsBotTyping(true);
 
@@ -55,14 +68,21 @@ const ChatPanel = ({ messages, setMessages }) => {
         const response = await fetch('http://localhost:3001/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: textToSend }),
+            body: JSON.stringify({ 
+                prompt: textToSend, 
+                chatId: chatId,
+                history: messages
+            }), 
+            credentials: 'include',
         });
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const data = await response.json();
+        if (data.newChatId && !chatId) { setChatId(data.newChatId); }
         setMessages(prev => [...prev, { text: data.reply, sender: 'bot' }]);
     } catch (error) {
         console.error("Fetch API call failed:", error);
-        setMessages(prev => [...prev, { text: "Sorry, I'm having trouble connecting.", sender: 'bot' }]);
+        // --- Give a more helpful error message in the UI ---
+        setMessages(prev => [...prev, { text: "Sorry, I've hit the request limit. Please try again in a moment.", sender: 'bot' }]);
     } finally {
         setIsBotTyping(false);
     }
@@ -81,18 +101,29 @@ const ChatPanel = ({ messages, setMessages }) => {
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask HireAI anything... (Ctrl+Enter to send)"
+        placeholder="Tell me about the project you need help with..."
         className="w-full bg-gray-800 text-white rounded-lg p-4 pl-5 pr-14 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-inner resize-none"
         rows={1} maxRows={5}
       />
       <button
-        onClick={() => sendMessage()} disabled={!input.trim()}
+        // --- ADD THE COOLDOWN TO THE DISABLED LOGIC ---
+        disabled={!input.trim() || isBotTyping || isRateLimited}
+        onClick={() => sendMessage()}
         className="absolute right-3 bottom-3 text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors p-2 rounded-full"
       >
         <Send size={18} />
       </button>
     </div>
   );
+  
+  if (isLoading) {
+    return (
+      <div className="flex-grow flex flex-col items-center justify-center bg-gray-700 text-white">
+        <LoaderCircle className="animate-spin h-12 w-12 text-blue-400" />
+        <p className="mt-4 text-lg">Restoring your session...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-grow flex flex-col bg-gray-700 h-full relative overflow-hidden">
@@ -107,8 +138,8 @@ const ChatPanel = ({ messages, setMessages }) => {
             </h1>
             <p className="text-lg text-gray-300 mt-2 mb-12">How can I help you today?</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-              <ExamplePrompt onClick={sendMessage} text="Find candidates for..." promptText="a senior Python developer with machine learning experience." />
-              <ExamplePrompt onClick={sendMessage} text="Help me with..." promptText="a UI/UX designer proficient in Figma and user research." />
+              <ExamplePrompt onClick={sendMessage} text="I need to hire for a new project..." promptText="I need to hire for a new project" />
+              <ExamplePrompt onClick={sendMessage} text="Help me define a job role..." promptText="Help me define a job role" />
             </div>
             {inputArea}
           </motion.div>
@@ -116,13 +147,10 @@ const ChatPanel = ({ messages, setMessages }) => {
       ) : (
         <>
           <div className="flex-grow p-6 space-y-6 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-800/50 hover:scrollbar-thumb-blue-500">
-            {/* --- THIS IS THE FULLY CORRECTED BLOCK --- */}
             <AnimatePresence>
                 {messages.map((msg, index) => (
                     <motion.div
-                        key={index}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
+                        key={index} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                         className={`flex items-end gap-3 ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
                     >
                         <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.sender === 'user' ? 'bg-blue-600' : 'bg-gray-800'}`}>
@@ -134,7 +162,6 @@ const ChatPanel = ({ messages, setMessages }) => {
                     </motion.div>
                 ))}
             </AnimatePresence>
-            
             {isBotTyping && (
                 <motion.div className="flex items-end gap-3 flex-row w-fit">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-800">

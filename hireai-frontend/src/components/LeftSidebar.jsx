@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, MessageSquare, User, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
-const LeftSidebar = ({ onNewChat }) => {
+const LeftSidebar = ({ onNewChat , userId }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [width, setWidth] = useState(280);
 
@@ -63,13 +63,27 @@ const LeftSidebar = ({ onNewChat }) => {
       </div>
 
       {/* User Info Section */}
-      <div className="p-4 border-t border-gray-700">
+      {/* <div className="p-4 border-t border-gray-700">
         <div className="flex items-center">
           <User size={30} className="rounded-full bg-gray-600 p-1 shrink-0" />
           {!isCollapsed && (
             <div className="ml-3 overflow-hidden">
               <p className="font-semibold truncate">Alex Johnson</p>
               <p className="text-sm text-gray-400 truncate">user-id-12345</p>
+            </div>
+          )}
+        </div>
+      </div> */}
+      <div className="p-4 border-t border-gray-700">
+        <div className="flex items-center">
+          <User size={30} className="rounded-full bg-gray-600 p-1 shrink-0" />
+          {!isCollapsed && (
+            <div className="ml-3 overflow-hidden">
+              <p className="font-semibold truncate">Recruiter</p>
+              {/* Display the guest ID from the cookie */}
+              <p className="text-xs text-gray-400 truncate">
+                {userId || 'guest-id-loading...'}
+              </p>
             </div>
           )}
         </div>
